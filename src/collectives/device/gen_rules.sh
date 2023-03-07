@@ -32,7 +32,7 @@ for base in sendrecv all_reduce all_gather broadcast reduce reduce_scatter; do
 
       echo "	@printf \"Compiling  %-35s > %s\\\\n\" ${base}.cu ${dir}/${base}_${op}_${dt}.o"
       echo "	mkdir -p ${dir}"
-      echo "	\${NVCC} -DNCCL_OP=${opn} -DNCCL_TYPE=${dtn} \${NVCUFLAGS} -dc \$< -o \$@"
+      echo "	\${NVCC} -DNCCL_OP=${opn} -DNCCL_TYPE=${dtn} \${NVCUFLAGS} -fcuda-rdc -Xcuda-ptxas -maxrregcount=96 -c \$< -o \$@"
       echo ""
       targets="$targets\t${dir}/${base}_${op}_${dt}.o \\\\\n"
       dtn=$(($dtn + 1))

@@ -20,7 +20,13 @@ STATICLIB  := $(OBJDIR)/colldevice.a
 DEVOBJ     := $(OBJDIR)/devlink.o
 RULESFILE  := $(OBJDIR)/Makefile.rules
 
-NVCUFLAGS  += -I. -I.. -I$(BUILDDIR)/include -I../../include --compiler-options "-fPIC -fvisibility=hidden"
+NVCUFLAGS  += -I. -I.. -I$(BUILDDIR)/include -I../../include
+DEPFILEOUT := -o
+ifneq '' '$(findstring clang,$(NVCC))'
+  DEPFILEOUT := >
+else
+  NVCUFLAGS += --compiler-options "-fPIC -fvisibility=hidden"
+endif
 
 
 all: $(STATICLIB)
@@ -50,7 +56,7 @@ $(STATICLIB): $(LIBOBJ) $(DEVOBJ)
 # be regenerated.
 $(OBJDIR)/%.dep : %.cu
 	@mkdir -p $(OBJDIR)
-	@$(NVCC) $(NVCUFLAGS) -M $< -o $@.tmp
+	@$(NVCC) $(NVCUFLAGS) -M $< $(DEPFILEOUT) $@.tmp
 	@sed "0,/^.*:/s//$(subst /,\/,$@):/" $@.tmp > $@
 	@sed -e 's/.*://' -e 's/\\$$//' < $@.tmp | fmt -1 | \
                 sed -e 's/^ *//' -e 's/$$/:/' >> $@
@@ -61,16 +67,18 @@ $(OBJDIR)/%.dep : %.cu
 $(OBJDIR)/functions.o : functions.cu $(OBJDIR)/functions.dep
 	@printf "Compiling  %-35s > %s\n" $< $@
 	mkdir -p `dirname $@`
-	$(NVCC) $(NVCUFLAGS) -dc $< -o $@
+	$(NVCC) $(NVCUFLAGS) -fcuda-rdc -Xcuda-ptxas -maxrregcount=96 -c $< -o $@
 
 $(OBJDIR)/onerank_reduce.o : onerank_reduce.cu $(OBJDIR)/onerank_reduce.dep
 	@printf "Compiling  %-35s > %s\n" $< $@
 	mkdir -p `dirname $@`
-	$(NVCC) $(NVCUFLAGS) -dc $< -o $@
+	$(NVCC) $(NVCUFLAGS) -fcuda-rdc -Xcuda-ptxas -maxrregcount=96 -c $< -o $@
 
 # ... and create the device-side linked object with all those.
 $(DEVOBJ) : $(LIBOBJ)
-	$(NVCC) $(NVCUFLAGS) -dlink $^ -o $@
+	nvlink --cpu-arch=X86_64 --arch=sm_60 --register-link-binaries=device_register_sm60.h --output-file=device_sm60.cubin $^
+	fatbinary -64 --cmdline=-compile-only --link --compress-all --create=device.fatbin --embedded-fatbin=device_fatbin.h --image=profile=sm_60,file=device_sm60.cubin
+	$(CXX) -c -x c++ -fPIC -DFATBINFILE="\"device_fatbin.h\"" -DREGISTERLINKBINARYFILE="\"device_register_sm60.h\"" -I. -D__NV_EXTRA_INITIALIZATION= -D__NV_EXTRA_FINALIZATION= -D__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__ -pthread -fPIC "-I/usr/local/cuda/bin/../targets/x86_64-linux/include" -m64 "/usr/local/cuda/bin/crt/link.stub" -o $@
 
 clean:
 	rm -f $(LIBOBJ) $(DEVOBJ) $(DEPFILES) $(DEPENDFILES) $(RULESFILE) $(STATICLIB)

@@ -13,11 +13,17 @@ TRACE ?= 0
 PROFAPI ?= 1
 NVTX ?= 1
 
-NVCC = $(CUDA_HOME)/bin/nvcc
+NVCC = /usr/lib/llvm-16/bin/clang
+CXX = /dt9/usr/bin/gcc
+CXXFLAGS += -D__STDC_FORMAT_MACROS
 
 CUDA_LIB ?= $(CUDA_HOME)/lib64
 CUDA_INC ?= $(CUDA_HOME)/include
-CUDA_VERSION = $(strip $(shell which $(NVCC) >/dev/null && $(NVCC) --version | grep release | sed 's/.*release //' | sed 's/\,.*//'))
+ifneq '' '$(findstring clang,$(NVCC))'
+  CUDA_VERSION ?= $(shell ls $(CUDA_LIB)/libcudart.so.* | head -1 | rev | cut -d "." -f -2 | rev)
+else
+  CUDA_VERSION = $(strip $(shell which $(NVCC) >/dev/null && $(NVCC) --version | grep release | sed 's/.*release //' | sed 's/\,.*//'))
+endif
 #CUDA_VERSION ?= $(shell ls $(CUDA_LIB)/libcudart.so.* | head -1 | rev | cut -d "." -f -2 | rev)
 CUDA_MAJOR = $(shell echo $(CUDA_VERSION) | cut -d "." -f 1)
 CUDA_MINOR = $(shell echo $(CUDA_VERSION) | cut -d "." -f 2)
@@ -53,6 +59,12 @@ else ifeq ($(shell test "0$(CUDA_MAJOR)" -ge 9; echo $$?),0)
 else
   NVCC_GENCODE ?= $(CUDA8_GENCODE) $(CUDA8_PTX)
 endif
+ifneq '' '$(findstring clang,$(NVCC))'
+  NVCC_GENCODE := --cuda-gpu-arch=sm_60 --cuda-include-ptx=sm_60
+endif
+# NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=sm_/--cuda-gpu-arch=sm_/g')
+# NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=compute_/--cuda-include-ptx=sm_/g')
+# COMPUTE_ARCHES := $(shell echo $(NVCC_GENCODE) | grep -o "sm_[0-9][0-9]" | sort | uniq)
 $(info NVCC_GENCODE is ${NVCC_GENCODE})
 
 CXXFLAGS   := -DCUDA_MAJOR=$(CUDA_MAJOR) -DCUDA_MINOR=$(CUDA_MINOR) -fPIC -fvisibility=hidden \
@@ -62,7 +74,11 @@ CXXFLAGS   := -DCUDA_MAJOR=$(CUDA_MAJOR) -DCUDA_MINOR=$(CUDA_MINOR) -fPIC -fvisi
 # Maxrregcount needs to be set accordingly to NCCL_MAX_NTHREADS (otherwise it will cause kernel launch errors)
 # 512 : 120, 640 : 96, 768 : 80, 1024 : 60
 # We would not have to set this if we used __launch_bounds__, but this only works on kernels, not on functions.
-NVCUFLAGS  := -ccbin $(CXX) $(NVCC_GENCODE) -std=c++11 --expt-extended-lambda -Xptxas -maxrregcount=96 -Xfatbin -compress-all
+ifneq '' '$(findstring clang,$(NVCC))'
+  NVCUFLAGS  := --no-cuda-include-ptx=all $(NVCC_GENCODE) -std=c++11
+else
+  NVCUFLAGS  := -ccbin $(CXX) $(NVCC_GENCODE) -std=c++11 --expt-extended-lambda -Xptxas -maxrregcount=96 -Xfatbin -compress-all
+endif
 # Use addprefix so that we can specify more than one path
 NVLDFLAGS  := -L${CUDA_LIB} -lcudart -lrt
 
@@ -88,7 +104,7 @@ ifneq ($(VERBOSE), 0)
 NVCUFLAGS += -Xptxas -v -Xcompiler -Wall,-Wextra,-Wno-unused-parameter
 CXXFLAGS  += -Wall -Wextra
 else
-.SILENT:
+#.SILENT:
 endif
 
 ifneq ($(TRACE), 0)
