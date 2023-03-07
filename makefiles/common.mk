@@ -60,10 +60,10 @@ else
   NVCC_GENCODE ?= $(CUDA8_GENCODE) $(CUDA8_PTX)
 endif
 ifneq '' '$(findstring clang,$(NVCC))'
-  NVCC_GENCODE := --cuda-gpu-arch=sm_60 --cuda-include-ptx=sm_60
+  ORIGINAL_GENCODE := $(NVCC_GENCODE)
+  NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=sm_/--cuda-gpu-arch=sm_/g')
+  NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=compute_/--cuda-include-ptx=sm_/g')
 endif
-# NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=sm_/--cuda-gpu-arch=sm_/g')
-# NVCC_GENCODE := $(shell echo $(NVCC_GENCODE) | sed 's/-gencode=arch=compute_[0-9]\+,code=compute_/--cuda-include-ptx=sm_/g')
 # COMPUTE_ARCHES := $(shell echo $(NVCC_GENCODE) | grep -o "sm_[0-9][0-9]" | sort | uniq)
 $(info NVCC_GENCODE is ${NVCC_GENCODE})
 
@@ -75,7 +75,7 @@ CXXFLAGS   := -DCUDA_MAJOR=$(CUDA_MAJOR) -DCUDA_MINOR=$(CUDA_MINOR) -fPIC -fvisi
 # 512 : 120, 640 : 96, 768 : 80, 1024 : 60
 # We would not have to set this if we used __launch_bounds__, but this only works on kernels, not on functions.
 ifneq '' '$(findstring clang,$(NVCC))'
-  NVCUFLAGS  := --no-cuda-include-ptx=all $(NVCC_GENCODE) -std=c++11
+  NVCUFLAGS  := --no-cuda-include-ptx=all $(NVCC_GENCODE) -std=c++11 --cuda-path=/usr/local/cuda
 else
   NVCUFLAGS  := -ccbin $(CXX) $(NVCC_GENCODE) -std=c++11 --expt-extended-lambda -Xptxas -maxrregcount=96 -Xfatbin -compress-all
 endif
